@@ -1,0 +1,92 @@
+/* ==========================================================================
+   Sample dataset: 15 employees across Finance, IT, HR, and Sales, with
+   login activity and resource-access activity. A handful of access events
+   are deliberately planted outside working hours on High-sensitivity
+   resources so the flag_suspicious_access trigger fires and populates
+   flagged_alerts automatically -- no manual inserts into that table.
+   ========================================================================== */
+
+-- ------------------------------------------------------------------------
+-- employees (15 total)
+-- ------------------------------------------------------------------------
+INSERT INTO employees (name, department, role, join_date) VALUES
+  ('Priya Nair',      'HR',      'Analyst',              '2021-03-15'),
+  ('Karan Mehta',     'Finance', 'Senior Analyst',        '2019-07-01'),
+  ('Neha Kapoor',     'Sales',   'Executive',             '2022-01-10'),
+  ('Rahul Verma',     'IT',      'System Admin',          '2018-05-20'),
+  ('Isha Sharma',     'HR',      'Manager',               '2017-11-02'),
+  ('Siddharth Bose',  'IT',      'DevOps Engineer',       '2020-09-14'),
+  ('Ananya Iyer',     'Finance', 'Accountant',            '2021-06-25'),
+  ('Vikram Rao',      'Sales',   'Team Lead',             '2016-02-18'),
+  ('Aditya Singh',    'IT',      'Backend Developer',     '2019-12-03'),
+  ('Arjun Nair',      'IT',      'Support Engineer',      '2022-08-09'),
+  ('Divya Menon',     'HR',      'HR Executive',          '2020-04-27'),
+  ('Karthik Reddy',   'Sales',   'Regional Manager',      '2015-10-11'),
+  ('Pooja Bhatt',     'Finance', 'Auditor',               '2021-01-30'),
+  ('Ishita Desai',    'Finance', 'Financial Analyst',     '2018-03-08'),
+  ('Sameer Khan',     'Sales',   'Sales Associate',       '2023-02-14');
+
+-- ------------------------------------------------------------------------
+-- login_logs -- two logins per employee, mostly normal hours
+-- (employee_id order matches insertion order above: 1-15)
+-- ------------------------------------------------------------------------
+INSERT INTO login_logs (employee_id, login_time, logout_time, ip_address) VALUES
+  (1,  '2026-02-03 09:15', '2026-02-03 17:40', '10.0.1.11'),
+  (1,  '2026-03-10 09:05', '2026-03-10 18:10', '10.0.1.11'),
+  (2,  '2026-02-14 22:50', '2026-02-15 01:05', '10.0.1.22'),
+  (2,  '2026-04-02 09:20', '2026-04-02 17:55', '10.0.1.22'),
+  (3,  '2026-01-20 09:30', '2026-01-20 17:15', '10.0.1.33'),
+  (4,  '2026-03-04 23:55', '2026-03-05 01:10', '10.0.1.44'),
+  (4,  '2026-03-20 09:10', '2026-03-20 18:00', '10.0.1.44'),
+  (5,  '2026-02-11 09:00', '2026-02-11 17:30', '10.0.1.55'),
+  (6,  '2026-04-01 21:20', '2026-04-01 23:00', '10.0.1.66'),
+  (6,  '2026-04-15 09:25', '2026-04-15 17:45', '10.0.1.66'),
+  (7,  '2026-02-08 09:15', '2026-02-08 17:20', '10.0.1.77'),
+  (8,  '2026-01-28 09:05', '2026-01-28 18:05', '10.0.1.88'),
+  (9,  '2026-03-11 22:40', '2026-03-12 01:00', '10.0.1.99'),
+  (9,  '2026-04-02 22:15', '2026-04-03 00:30', '10.0.1.99'),
+  (9,  '2026-05-19 04:50', '2026-05-19 06:00', '10.0.1.99'),
+  (10, '2026-02-19 09:10', '2026-02-19 17:35', '10.0.1.10'),
+  (11, '2026-03-01 09:00', '2026-03-01 17:10', '10.0.1.12'),
+  (12, '2026-01-15 09:20', '2026-01-15 18:00', '10.0.1.13'),
+  (13, '2026-02-25 09:05', '2026-02-25 17:25', '10.0.1.14'),
+  (14, '2026-03-17 23:50', '2026-03-18 02:50', '10.0.1.15'),
+  (14, '2026-04-10 09:15', '2026-04-10 17:50', '10.0.1.15'),
+  (15, '2026-02-05 09:10', '2026-02-05 17:40', '10.0.1.16');
+
+-- ------------------------------------------------------------------------
+-- access_logs -- normal daytime activity across all 15 employees
+-- ------------------------------------------------------------------------
+INSERT INTO access_logs (employee_id, resource_accessed, access_time, action, sensitivity_level) VALUES
+  (1,  'Onboarding_Docs',          '2026-02-03 10:05', 'view',     'Low'),
+  (1,  'Leave_Policy_Sheet',       '2026-03-10 11:20', 'edit',     'Low'),
+  (2,  'Quarterly_Budget_Report',  '2026-04-02 11:00', 'view',     'Medium'),
+  (2,  'Vendor_Invoices',          '2026-04-02 15:30', 'edit',     'Medium'),
+  (3,  'Lead_Pipeline_Sheet',      '2026-01-20 10:15', 'view',     'Low'),
+  (4,  'Server_Config_Backup',     '2026-03-20 10:30', 'edit',     'Medium'),
+  (4,  'Network_Diagram',          '2026-03-20 14:00', 'view',     'Low'),
+  (5,  'Employee_Handbook',        '2026-02-11 10:00', 'view',     'Low'),
+  (6,  'Deployment_Pipeline_Logs', '2026-04-15 11:30', 'view',     'Medium'),
+  (7,  'Expense_Reports',          '2026-02-08 10:45', 'edit',     'Medium'),
+  (8,  'Sales_Forecast',           '2026-01-28 11:10', 'view',     'Low'),
+  (9,  'Sprint_Backlog',           '2026-04-03 10:00', 'edit',     'Low'),
+  (10, 'Ticket_Queue',             '2026-02-19 10:20', 'view',     'Low'),
+  (11, 'Candidate_Resumes',        '2026-03-01 10:40', 'view',     'Medium'),
+  (12, 'Regional_Sales_Dashboard', '2026-01-15 10:50', 'view',     'Low'),
+  (13, 'Audit_Trail_Report',       '2026-02-25 11:05', 'view',     'Medium'),
+  (14, 'Financial_Statements_Q1',  '2026-04-10 10:30', 'edit',     'Medium'),
+  (15, 'Client_Order_History',     '2026-02-05 10:15', 'view',     'Low');
+
+-- ------------------------------------------------------------------------
+-- access_logs -- planted anomalies (High sensitivity + download/delete +
+-- outside 8 AM-8 PM). Each of these fires trg_flag_suspicious_access and
+-- inserts a row into flagged_alerts automatically.
+-- ------------------------------------------------------------------------
+INSERT INTO access_logs (employee_id, resource_accessed, access_time, action, sensitivity_level) VALUES
+  (4,  'Salary_Master_File',        '2026-03-05 00:20', 'download', 'High'),  -- Rahul Verma
+  (6,  'Admin_Credentials_Vault',   '2026-04-01 21:45', 'download', 'High'),  -- Siddharth Bose
+  (9,  'Client_Contracts_Master',   '2026-03-11 23:05', 'download', 'High'),  -- Aditya Singh (1/3)
+  (9,  'Admin_Credentials_Vault',   '2026-04-02 22:40', 'download', 'High'),  -- Aditya Singh (2/3)
+  (9,  'Client_Contracts_Master',   '2026-05-19 05:15', 'delete',   'High'),  -- Aditya Singh (3/3)
+  (14, 'Salary_Master_File',        '2026-03-18 02:35', 'delete',   'High'),  -- Ishita Desai
+  (2,  'Payroll_Master_Records',    '2026-02-14 23:20', 'download', 'High');  -- Karan Mehta
