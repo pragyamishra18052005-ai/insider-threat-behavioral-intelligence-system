@@ -1,0 +1,116 @@
+/* ==========================================================================
+   Insider Threat Behavioral Intelligence System
+   Database schema: tables, auto-flagging trigger, and risk dashboard view.
+   Database: PostgreSQL
+   ========================================================================== */
+
+-- ------------------------------------------------------------------------
+-- 1. employees
+-- Central reference table. Stores identity and organizational details.
+-- ------------------------------------------------------------------------
+CREATE TABLE employees (
+  employee_id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  department VARCHAR(80) NOT NULL,
+  role VARCHAR(80) NOT NULL,
+  join_date DATE NOT NULL
+);
+
+-- ------------------------------------------------------------------------
+-- 2. login_logs
+-- Every login/logout event with source IP, used to detect unusual login
+-- timing or unrecognized IP ranges.
+-- ------------------------------------------------------------------------
+CREATE TABLE login_logs (
+  login_id SERIAL PRIMARY KEY,
+  employee_id INT NOT NULL REFERENCES employees(employee_id),
+  login_time TIMESTAMP NOT NULL,
+  logout_time TIMESTAMP,
+  ip_address VARCHAR(45) NOT NULL
+);
+
+-- ------------------------------------------------------------------------
+-- 3. access_logs
+-- Every resource access event: action performed and sensitivity level.
+-- Primary source of behavioral signals used for threat detection.
+-- ------------------------------------------------------------------------
+CREATE TABLE access_logs (
+  access_id SERIAL PRIMARY KEY,
+  employee_id INT NOT NULL REFERENCES employees(employee_id),
+  resource_accessed VARCHAR(150) NOT NULL,
+  access_time TIMESTAMP NOT NULL,
+  action VARCHAR(20) NOT NULL CHECK (action IN ('view','download','edit','delete')),
+  sensitivity_level VARCHAR(20) NOT NULL CHECK (sensitivity_level IN ('Low','Medium','High'))
+);
+
+-- ------------------------------------------------------------------------
+-- 4. flagged_alerts
+-- Auto-generated alerts whenever the trigger detects a suspicious access
+-- pattern. References the access_logs row that triggered it.
+-- ------------------------------------------------------------------------
+CREATE TABLE flagged_alerts (
+  alert_id SERIAL PRIMARY KEY,
+  employee_id INT NOT NULL REFERENCES employees(employee_id),
+  alert_type VARCHAR(100) NOT NULL,
+  severity VARCHAR(20) NOT NULL CHECK (severity IN ('Low','Medium','High')),
+  generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  related_access_id INT REFERENCES access_logs(access_id)
+);
+
+-- ------------------------------------------------------------------------
+-- Trigger: flag_suspicious_access
+-- Fires after every insert into access_logs. If a High-sensitivity
+-- resource is downloaded/deleted outside working hours (before 8 AM or
+-- after 8 PM), a High severity alert is generated automatically.
+-- ------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION flag_suspicious_access()
+RETURNS TRIGGER AS $$
+DECLARE
+  access_hour INT;
+BEGIN
+  access_hour := EXTRACT(HOUR FROM NEW.access_time);
+
+  IF NEW.sensitivity_level = 'High'
+     AND NEW.action IN ('download','delete')
+     AND (access_hour < 8 OR access_hour > 20) THEN
+
+    INSERT INTO flagged_alerts (employee_id, alert_type, severity, related_access_id)
+    VALUES (
+      NEW.employee_id,
+      'Off-hours High-Sensitivity ' || NEW.action,
+      'High',
+      NEW.access_id
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_flag_suspicious_access
+AFTER INSERT ON access_logs
+FOR EACH ROW
+EXECUTE FUNCTION flag_suspicious_access();
+
+-- ------------------------------------------------------------------------
+-- View: employee_risk_dashboard
+-- Consolidates each employee's total accesses and total flagged alerts
+-- into a single risk_level classification (Low / Medium / High).
+-- ------------------------------------------------------------------------
+CREATE VIEW employee_risk_dashboard AS
+SELECT
+  e.employee_id,
+  e.name,
+  e.department,
+  COUNT(DISTINCT al.access_id) AS total_accesses,
+  COUNT(DISTINCT fa.alert_id) AS total_alerts,
+  CASE
+    WHEN COUNT(DISTINCT fa.alert_id) >= 3 THEN 'High'
+    WHEN COUNT(DISTINCT fa.alert_id) BETWEEN 1 AND 2 THEN 'Medium'
+    ELSE 'Low'
+  END AS risk_level
+FROM employees e
+LEFT JOIN access_logs al ON e.employee_id = al.employee_id
+LEFT JOIN flagged_alerts fa ON e.employee_id = fa.employee_id
+GROUP BY e.employee_id, e.name, e.department
+ORDER BY total_alerts DESC;
