@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Queries that provide answers to the analysis questions.
+   Important note: section 8 includes INSERT statements used to verify the
+   trigger against fresh, live data. Use them responsibly.
+   ========================================================================== */
+
+---------------------------------------------------------------------------
+-- 6. Analysis Queries -- Joins, Aggregation, Window Functions
+---------------------------------------------------------------------------
+
+-- 6.1 Full access history with employee names
+SELECT e.name, e.department, al.resource_accessed, al.action, al.access_time
+FROM access_logs al
+JOIN employees e ON al.employee_id = e.employee_id
+ORDER BY al.access_time;
+
+-- 6.2 Total accesses per department
+SELECT e.department, COUNT(*) AS total_accesses
+FROM access_logs al
+JOIN employees e ON al.employee_id = e.employee_id
+GROUP BY e.department
+ORDER BY total_accesses DESC;
+
+-- 6.3 High-sensitivity access count per employee
+SELECT e.name, COUNT(*) AS high_sensitivity_accesses
+FROM access_logs al
+JOIN employees e ON al.employee_id = e.employee_id
+WHERE al.sensitivity_level = 'High'
+GROUP BY e.name
+ORDER BY high_sensitivity_accesses DESC;
+
+-- 6.4 Ranking employees by alert count (RANK)
+SELECT e.name, COUNT(fa.alert_id) AS alert_count,
+       RANK() OVER (ORDER BY COUNT(fa.alert_id) DESC) AS risk_rank
+FROM employees e
+LEFT JOIN flagged_alerts fa ON e.employee_id = fa.employee_id
+GROUP BY e.name
+ORDER BY risk_rank;
+
+-- 6.5 Time gap between consecutive accesses (LAG)
+SELECT employee_id, resource_accessed, access_time,
+       access_time - LAG(access_time) OVER (
+         PARTITION BY employee_id ORDER BY access_time
+       ) AS time_since_last_access
+FROM access_logs
+ORDER BY employee_id, access_time;
+
+-- 6.6 Activity quartiles (NTILE)
+WITH access_counts AS (
+  SELECT e.employee_id, e.name, COUNT(al.access_id) AS total_accesses
+  FROM employees e
+  LEFT JOIN access_logs al ON e.employee_id = al.employee_id
+  GROUP BY e.employee_id, e.name
+)
+SELECT name, total_accesses,
+       NTILE(4) OVER (ORDER BY total_accesses DESC) AS activity_quartile
+FROM access_counts;
+
+-- 6.7 Logins outside working hours
+SELECT e.name, ll.login_time, ll.ip_address
+FROM login_logs ll
+JOIN employees e ON ll.employee_id = e.employee_id
+WHERE EXTRACT(HOUR FROM ll.login_time) < 8
+   OR EXTRACT(HOUR FROM ll.login_time) > 20
+ORDER BY ll.login_time;
+
+-- 6.8 Department with the most flagged alerts
+SELECT e.department, COUNT(fa.alert_id) AS total_alerts
+FROM flagged_alerts fa
+JOIN employees e ON fa.employee_id = e.employee_id
+GROUP BY e.department
+ORDER BY total_alerts DESC
+LIMIT 1;
+
+-- 6.9 Action-type breakdown for High-sensitivity resources
+SELECT action, COUNT(*) AS count
+FROM access_logs
+WHERE sensitivity_level = 'High'
+GROUP BY action
+ORDER BY count DESC;
+
+---------------------------------------------------------------------------
+-- 7. Advanced SQL -- CTEs, Views, Transactions
+---------------------------------------------------------------------------
+
+-- 7.1 Repeat-risk employees (CTE)
+WITH alert_counts AS (
+  SELECT employee_id, COUNT(*) AS total_alerts
+  FROM flagged_alerts
+  GROUP BY employee_id
+)
+SELECT e.name, e.department, ac.total_alerts
+FROM alert_counts ac
+JOIN employees e ON ac.employee_id = e.employee_id
+WHERE ac.total_alerts > 1
+ORDER BY ac.total_alerts DESC;
+
+-- 7.2 Department-wise average accesses per employee (chained CTEs)
+WITH dept_access AS (
+  SELECT e.department, e.employee_id, COUNT(al.access_id) AS access_count
+  FROM employees e
+  LEFT JOIN access_logs al ON e.employee_id = al.employee_id
+  GROUP BY e.department, e.employee_id
+),
+dept_avg AS (
+  SELECT department, AVG(access_count) AS avg_access_per_employee
+  FROM dept_access
+  GROUP BY department
+)
+SELECT * FROM dept_avg
+ORDER BY avg_access_per_employee DESC;
+
+-- 7.3 Querying the risk dashboard view
+SELECT * FROM employee_risk_dashboard
+ORDER BY total_alerts DESC;
+
+-- 7.4 Transaction demo -- ROLLBACK
+-- Simulates an investigator tentatively downgrading an alert's severity,
+-- then reverting with ROLLBACK.
+BEGIN;
+
+UPDATE flagged_alerts
+SET severity = 'Medium'
+WHERE employee_id = 2;
+
+SELECT alert_id, employee_id, severity FROM flagged_alerts WHERE employee_id = 2;
+
+ROLLBACK; -- undoes the UPDATE; severity reverts to original
+
+SELECT alert_id, employee_id, severity FROM flagged_alerts WHERE employee_id = 2;
+
+-- 7.5 Transaction demo -- COMMIT
+-- Simulates an investigator confirming an alert after review.
+BEGIN;
+
+UPDATE flagged_alerts
+SET alert_type = alert_type || ' - Investigated & Confirmed'
+WHERE employee_id = 9;
+
+COMMIT;
+
+SELECT alert_id, employee_id, alert_type FROM flagged_alerts WHERE employee_id = 9;
+
+-- 7.6 Transaction demo -- SAVEPOINT (partial rollback)
+-- Two updates are made; only the second is undone via SAVEPOINT.
+BEGIN;
+
+UPDATE flagged_alerts SET severity = 'Low' WHERE employee_id = 6;
+SAVEPOINT after_emp6_update;
+
+UPDATE flagged_alerts SET severity = 'Low' WHERE employee_id = 14;
+-- suppose employee 14's downgrade was a mistake, undo only that part
+ROLLBACK TO SAVEPOINT after_emp6_update;
+
+COMMIT;
+
+SELECT alert_id, employee_id, severity
+FROM flagged_alerts
+WHERE employee_id IN (6, 14);
+
+---------------------------------------------------------------------------
+-- 8. Live System Verification
+-- Fresh, present-day inserts confirming the trigger fires on new data,
+-- not just against the original seed dataset.
+---------------------------------------------------------------------------
+
+INSERT INTO access_logs (employee_id, resource_accessed, access_time, action, sensitivity_level)
+VALUES (10, 'Network_Access_Keys', '2026-07-01 23:45', 'download', 'High');
+
+INSERT INTO access_logs (employee_id, resource_accessed, access_time, action, sensitivity_level)
+VALUES (11, 'HR_Complaint_Records', '2026-07-07 23:50', 'download', 'High');
+
+SELECT * FROM flagged_alerts ORDER BY generated_at DESC;
